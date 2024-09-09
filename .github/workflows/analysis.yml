@@ -92,18 +92,7 @@ jobs:
       - name: Try to run eqbench analysis
         working-directory: ${{ github.workspace }}/diffkemp
         run: |
-          echo -e "# EqBench results\n\n" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ github.event_name }}" = "workflow_dispatch" ]]; then
-            echo "- repo: ${{ inputs.repository }}" >> $GITHUB_STEP_SUMMARY
-            echo "- ref: ${{ inputs.ref }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- repo: diffkemp/diffkemp" >> $GITHUB_STEP_SUMMARY
-            echo "- ref: master" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo -e "\n\n" >> $GITHUB_STEP_SUMMARY
-          python3 EqBench-workflow/analysis compare-multiple tmp ${{ github.workspace }}/EqBench
-          echo -e "\n\n# Results by benchmarks for -O2 with default patterns\n\n" >> $GITHUB_STEP_SUMMARY
-          python3 EqBench-workflow/analysis by-benchmarks tmp/default-opt-O2-default-patterns >> $GITHUB_STEP_SUMMARY
+          python3 EqBench-workflow/run ${{ github.workspace }}/EqBench
 
 
 

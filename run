@@ -51,6 +51,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import yaml
 
 # regex for getting info from diffkemp report stat
@@ -158,9 +159,11 @@ class EqBenchRun:
             # Creating snapshots
             print("1) Creating snapshots:", file=sys.stderr)
             print("\ta) Creating old snapshots:", file=sys.stderr)
+            start = time.time()
             self._create_snapshots(new=False)
             print("\tb) Creating new snapshots:", file=sys.stderr)
             self._create_snapshots(new=True)
+            print(f"Snapshot creation duration {time.time() - start}")
 
         # Comparing snapshots and writing results to file
         print("2) Comparing snapshots", file=sys.stderr)
@@ -174,10 +177,12 @@ class EqBenchRun:
             else:
                 print("type;benchmark;program;expected;result;correct;changes",
                       file=results_file)
+            start = time.time()
             print("\ta) Comparing Eq snapshots", file=sys.stderr)
             self._compare_snapshots(neq=False, results_file=results_file)
             print("\tb) Comparing Neq snapshots", file=sys.stderr)
             self._compare_snapshots(neq=True, results_file=results_file)
+            print(f"Comparison duration {time.time() - start}")
         print(f"\n\nResults are written to {str(self.results_file_path)}\n\n")
 
     def _create_snapshots(self, new):
