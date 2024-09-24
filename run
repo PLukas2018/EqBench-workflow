@@ -141,6 +141,8 @@ class EqBenchRun:
         self.build_dir = Path(args.output_dir, BUILD_DIR)
         self.cmp_dir = Path(args.output_dir, COMPARE_DIR)
         self.only_compare = args.only_compare
+        # Path to diffkemp executable
+        self.diffkemp = args.diffkemp
         self.disable_patterns = args.disable_patterns
         self.results_file_path = Path(self.output_dir, "eqbench-results.csv")
         self.clang_options = args.add_clang_options
@@ -215,7 +217,7 @@ class EqBenchRun:
     def get_build_command(self):
         """Creates build command, does not include src file and output dir."""
         build_command = [
-            "bin/diffkemp",
+            self.diffkemp,
             "build",
         ]
         for option in self.clang_options:
@@ -305,7 +307,7 @@ class EqBenchRun:
     def get_compare_command(self):
         """Based on program arguments creates compare command."""
         compare_command = [
-            "bin/diffkemp", "compare",
+            self.diffkemp, "compare",
         ]
         if self.disable_patterns:
             compare_command.extend(["--disable-all-patterns"])
@@ -476,5 +478,7 @@ if __name__ == "__main__":
                         "--add-clang-options")
     parser.add_argument("--add-custom-llvm-passes",
                         help="specify llvm passes to be added")
+    parser.add_argument("--diffkemp", default="bin/diffkemp",
+                        help="path to diffkemp executable")
     args = parser.parse_args()
     EqBenchRun(args)
