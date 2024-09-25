@@ -38,7 +38,6 @@
 #     for aggregated type if comparison was incorrect contains info
 #     about which functions were evaluated as Eq and which as Neq,
 #   - `correct`: True if evaluation was correct, else False,
-#   - `changes`: list of changes which were done in the program.
 
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -109,17 +108,6 @@ class ProgramInfo:
         # is probably specified after a dot in program name.
         self.program_fun = info["program name"].split(".")[1] \
             if len(info["program name"].split(".")) == 2 else None
-        self.changes = info["changes"]
-
-    def get_description(self):
-        """Returns string containing list of changes."""
-        changes_description = []
-        for change in self.changes:
-            change_description = f"{change['change type']} " + \
-                                 f"({change['change operation']})"
-            if change_description not in changes_description:
-                changes_description.append(change_description)
-        return ", ".join(changes_description)
 
     @staticmethod
     def exists(src_dir):
@@ -174,7 +162,7 @@ class EqBenchRun:
                       "correct;changes;old_src;new_src",
                       file=results_file)
             else:
-                print("type;benchmark;program;expected;result;correct;changes",
+                print("type;benchmark;program;expected;result;correct",
                       file=results_file)
             print("\ta) Comparing Eq snapshots", file=sys.stderr)
             self._compare_snapshots(neq=False, results_file=results_file)
@@ -276,9 +264,7 @@ class EqBenchRun:
         output = self._compare(str(old_build_dir), str(new_build_dir),
                                str(result_dir), function=function)
 
-        result = AnalysisResult(program_info=program_info,
-                                expected_result=expected_result,
-                                old_build_dir=old_build_dir,
+        result = AnalysisResult(expected_result=expected_result,
                                 result_dir=result_dir,
                                 output=output,
                                 benchmark_type=benchmark_type)
@@ -362,20 +348,15 @@ class EqBenchRun:
 
 class AnalysisResult:
     """Result of evaluation of DiffKemp comparison of EqBench program."""
-    def __init__(self, program_info, expected_result, old_build_dir,
-                 result_dir, output, benchmark_type):
+    def __init__(self, expected_result, result_dir, output, benchmark_type):
         """
-        :param program_info: Info about benchmark program if it exists or None.
         :param expected_result: The expected result (Eq/Neq) of the comparison.
-        :param old_build_dir: Path to snapshot with old version of the program.
         :param result_dir: Path to dir containing results of the comparison.
         :param output: Stdout output of `diffkemp compare` for the program.
         :param benchmark_type: Type of benchmark "aggregate", "function-level",
                                "program-level".
         """
         self.expected_result = expected_result
-        self.program_info = program_info
-        self.old_build_dir = old_build_dir
         self.result_dir = result_dir
         self.total_symbols = REGEX_TOTAL.search(output).group(1)
         self.eq_symbols = REGEX_EQUAL.search(output).group(1)
@@ -411,14 +392,11 @@ class AnalysisResult:
                 result = f"{len(eq_functions)} Eq {eq_functions}, " + \
                         f"{len(neq_functions)} Neq {neq_functions}"
         correct = str(True if result == self.expected_result else False)
-        changes = self.program_info.get_description() if self.program_info \
-            else ""
         result_repre = [
             self.benchmark_type,
             self.benchmark_name, self.program_name,
             self.expected_result,
             result, correct,
-            changes
         ]
         return ";".join(result_repre)
 
