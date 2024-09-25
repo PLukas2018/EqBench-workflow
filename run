@@ -36,20 +36,20 @@
 #   - `expected`: represents expected result of comparison (Eq/Neq)
 #   - `result`: represents result of DiffKemp comparison (Eq/Neq),
 #     for aggregated type if comparison was incorrect contains info
-#     about which functions were evaluated as Eq and which as Neq,
+#     about how many functions were evaluated as Eq and Neq,
 #   - `correct`: True if evaluation was correct, else False,
 
 from argparse import ArgumentParser
 from collections import defaultdict
 import csv
 import tabulate
+from tempfile import NamedTemporaryFile
 from pathlib import Path
 import json
 import re
 import shutil
 import subprocess
 import sys
-import yaml
 
 # regex for getting info from diffkemp report stat
 REGEX_TOTAL = re.compile("^Total symbols: *(\\d+)", flags=re.MULTILINE)
@@ -63,34 +63,33 @@ COMPARE_DIR = "benchmarks-compare"
 # Name of file which describes EqBench programs.
 DESCRIPTION_FILE_NAME = "C-Desc.json"
 
-# Functions to ignore for aggregated programs because these functions
-# have not been changed and does not call function which was changed.
-# Dictionary
-# - keys being paths to version of program,
-# - values being list of functions to ignore
-AGGREGATED_FUNS_TO_IGNORE = {
-    "ej_hash/ej_hash/Neq": ["constructor"],
-    "ej_hash/ej_hash/Eq": ["constructor"],
-    "raytrace/raytrace/Neq": ["Vector3DConstructor",
-                              "Vector3DConstructor2",
-                              "SurfaceConstructor"],
-    "raytrace/raytrace/Eq": ["Vector3DConstructor",
-                             "Vector3DConstructor2",
-                             "SurfaceConstructor"],
-    "tcas/tcas/Neq": ["Own_Below_Threat", "Own_Above_Threat",
-                      "Inhibit_Biased_Climb", "ALIM"],
-    "tcas/tcas/Eq": ["Own_Below_Threat", "Own_Above_Threat",
-                     "Inhibit_Biased_Climb", "ALIM"],
-    "ell/ellProgram/Neq": ["SQR", "SIGN", "MAX", "MIN"],
-    "ell/ellProgram/Eq": ["SQR", "SIGN", "MAX", "MIN"],
-    "gam/gam/Neq": ["gammln"],
-    "gam/gam/Eq": ["gammln"],
-    "frenel/frenelProgram/Neq": ["getreal", "getimag", "constructor",
-                                 "constructor2", "assign", "assignObj", "plus",
-                                 "minus", "multiply", "divide"],
-    "frenel/frenelProgram/Eq": ["getreal", "getimag", "constructor",
-                                "constructor2", "assign", "assignObj", "plus",
-                                "minus", "multiply", "divide"],
+# EqBench programs that do not contain a `C-Desc.json` file usually contain
+# changes in all functions which are located in the program, so it is not
+# necessary to specify function to compare because by default DiffKemp analysis
+# all functions. However, there are some exceptions for Neq variants of
+# programs where some functions remained equal and thus should not be compared.
+# Manually created function list for such programs (program: function list).
+AGGREGATED_FUNS_TO_COMPARE = {
+    "ej_hash/ej_hash/Neq": [
+        "hashCode", "testCollision1", "testCollision2", "testCollision3",
+        "testCollision4"
+    ],
+    "raytrace/raytrace/Neq": [
+        "normalize", "LightConstructor", "SphereConstructor", "intersect"
+    ],
+    "tcas/tcas/Neq": [
+        "Non_Crossing_Biased_Descend", "Non_Crossing_Biased_Climb",
+        "altseptest"
+    ],
+    "ell/ellProgram/Neq": [
+        "snippet", "ellpi", "rf", "rd", "rj", "rc"
+    ],
+    "gam/gam/Neq": [
+        "betai", "betacf"
+    ],
+    "frenel/frenelProgram/Neq": [
+        "snippet", "cisi"
+    ]
 }
 
 
@@ -186,12 +185,27 @@ class EqBenchRun:
             print(f"\t\t{rel_path_to_file}", file=sys.stderr)
             output_path = self.build_dir / rel_path_to_file / name
             output_path.mkdir(parents=True, exist_ok=True)
-            self._build(str(file), str(output_path))
+            # If the program is in aggregated programs for which should be
+            # compared only certain functions, build snapshot with these
+            # functions.
+            functions = AGGREGATED_FUNS_TO_COMPARE[str(rel_path_to_file)] \
+                if str(rel_path_to_file) in AGGREGATED_FUNS_TO_COMPARE \
+                else None
 
-    def _build(self, file, output_dir):
-        """Creates snapshot of C `file` and saves it to `output_dir`."""
+            self._build(str(file), str(output_path), functions)
+
+    def _build(self, file, output_dir, functions):
+        """Creates snapshot of C `file` and saves it to `output_dir`.
+        :param functions: List of functions to build the snapshot for or None.
+        """
         build_command = self.get_build_command()
         build_command.extend([file, output_dir])
+        # If functions are specified add them as function_list
+        if functions:
+            functions_file = NamedTemporaryFile()
+            with open(functions_file.name, "w") as file:
+                print("\n".join(functions), file=file)
+            build_command.append(functions_file.name)
 
         subprocess.check_call(build_command, stdout=subprocess.DEVNULL)
 
@@ -249,6 +263,9 @@ class EqBenchRun:
         # should contain change in only one function,
         # get the name of function from the information about the program
         # and compare only this function.
+        # For other (aggregated) programs are compared all functions, except
+        # the ones in AGGREGATED_FUNS_TO_COMPARE, for these are compared
+        # only the specified functions with which the snapshots were build.
         function = None
         benchmark_type = "aggregated"
         if program_info:
@@ -373,24 +390,7 @@ class AnalysisResult:
         elif self.total_symbols == self.neq_symbols:
             result = "Neq"
         else:
-            # Some evaluated functions were equal some non-equal
-            # (can contains functions which were supposed to be ignored),
-            # check eq and non-equal functions
-            # (ignore the ones which should not be evaluated).
-            neq_functions = self._get_neq_funs()
-            all_functions = self._get_all_funs()
-            eq_functions = list(filter(
-                    lambda fun: fun not in neq_functions, all_functions))
-            if len(eq_functions) == len(all_functions):
-                # All functions which we do not want to ignore are equal.
-                result = "Eq"
-            elif len(neq_functions) == len(all_functions):
-                # All functions which we do not want to ignore are non-equal.
-                result = "Neq"
-            else:
-                # Still some functions are equal and some non-equal.
-                result = f"{len(eq_functions)} Eq {eq_functions}, " + \
-                        f"{len(neq_functions)} Neq {neq_functions}"
+            result = f"{self.eq_symbols} Eq, {self.neq_symbols} Neq"
         correct = str(True if result == self.expected_result else False)
         result_repre = [
             self.benchmark_type,
@@ -399,34 +399,6 @@ class AnalysisResult:
             result, correct,
         ]
         return ";".join(result_repre)
-
-    def _get_neq_funs(self):
-        """
-        Returns list of functions which were evaluated by DiffKemp as
-        non-equal functions.
-        """
-        with open(self.result_dir / "diffkemp-out.yaml", "r") as file:
-            yaml_result = yaml.safe_load(file)
-        fun_list = [
-            function["function"] for function in yaml_result["results"]]
-        # filter out not changed funs for aggregated programs
-        return self._remove_funs_to_ignore(fun_list)
-
-    def _get_all_funs(self):
-        """Returns list of all functions for an EqBench program."""
-        with open(Path(self.old_build_dir, "snapshot.yaml"), "r") as file:
-            snapshot_yaml = yaml.safe_load(file)
-        fun_list = [function["name"] for function in snapshot_yaml[0]["list"]]
-        return self._remove_funs_to_ignore(fun_list)
-
-    def _remove_funs_to_ignore(self, fun_list):
-        """Removes functions from the list which should not be compared."""
-        relative_path = "/".join(self.result_dir.parts[-3:])
-        if self.benchmark_type == "aggregated" and \
-           relative_path in AGGREGATED_FUNS_TO_IGNORE:
-            fun_list = [item for item in fun_list if item not in
-                        AGGREGATED_FUNS_TO_IGNORE[relative_path]]
-        return fun_list
 
 
 if __name__ == "__main__":
