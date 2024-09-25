@@ -2,7 +2,7 @@
 # Builds EqBench programs and compares them,
 # returns results how much successful was the comparison.
 #
-# Requirements: tabulate, progressbar
+# Requirements: tabulate
 #
 # References:
 # - EqBench paper:
@@ -44,7 +44,6 @@ from collections import defaultdict
 import csv
 import tabulate
 from pathlib import Path
-from progressbar import ProgressBar
 import json
 import re
 import shutil
@@ -180,11 +179,11 @@ class EqBenchRun:
         # does not match
         name = "old" if not new else "new"
         files = list(Path(self.src_dir).glob(f"**/{name}*.c"))
-        progressbar = ProgressBar()
-        for file in progressbar(files):
+        for file in files:
             # getting relative path to program folder
             # (benchmark/program/eq_or_neq)
             rel_path_to_file = file.relative_to(self.src_dir).parent
+            print(f"\t\t{rel_path_to_file}", file=sys.stderr)
             output_path = self.build_dir / rel_path_to_file / name
             output_path.mkdir(parents=True, exist_ok=True)
             self._build(str(file), str(output_path))
@@ -222,8 +221,9 @@ class EqBenchRun:
         """
         expected_result = "Eq" if not neq else "Neq"
         build_dirs = list(Path(self.build_dir).glob(f"**/{expected_result}"))
-        progressbar = ProgressBar()
-        for build_dir in progressbar(build_dirs):
+        for build_dir in build_dirs:
+            print(f"\t\t{build_dir.relative_to(self.build_dir)}",
+                  file=sys.stderr)
             self._compare_snapshot(build_dir, expected_result, results_file)
 
     def _compare_snapshot(self, build_dir, expected_result, results_file):
