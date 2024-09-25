@@ -3,9 +3,9 @@
 
 import argparse
 import csv
+import json
 import os
 import pandas as pd
-import re
 import shutil
 import subprocess
 import tabulate
@@ -28,17 +28,6 @@ RUN_FILE = 0
 RUN_DISABLE_PATTERNS = 1
 RUN_OPTIMISATION = 2
 RUN_USE_LLVM_OPT = 3  # Kernel-build llvm passes
-
-# REGEX for extracting total results from result.md
-FUNCTION_LEVEL_PATTERN = re.compile(
-    r"^\| function-level +\| *(\d+) \| +(\d+) \| +(\d+) \| +(\d+) \|$",
-    re.MULTILINE)
-PROGRAM_LEVEL_PATTERN = re.compile(
-    r"^\| program-level +\| *(\d+) \| +(\d+) \| +(\d+) \| +(\d+) \|$",
-    re.MULTILINE)
-AGGREGATED_PATTERN = re.compile(
-    r"^\| aggregated +\| *(\d+) \| +(\d+) \| +(\d+) \| +(\d+) \|$",
-    re.MULTILINE)
 
 
 def compare_multiple(args):
@@ -68,35 +57,43 @@ def get_total(output_dir):
     """Prints summary of evaluation for RUNS saved in output_dir."""
     head = ["Type", "opt level", "using custom llvm passes",
             "patterns", "eq/eq", "eq/neq", "neq/neq", "neq/eq"]
-    results = []
+    reports = []
     for run in RUNS:
-        result_file = os.path.join(output_dir, run[RUN_FILE], "result.md")
+        result_file = os.path.join(output_dir, run[RUN_FILE], "result.json")
         with open(result_file, "r") as file:
-            lines = file.read()
-            function_level = FUNCTION_LEVEL_PATTERN.search(lines).groups()
-            program_level = PROGRAM_LEVEL_PATTERN.search(lines).groups()
-            aggregated = AGGREGATED_PATTERN.search(lines).groups()
-        function_program_total = [str(int(f)+int(p)) for f, p in
-                                  zip(function_level, program_level)]
+            results = json.load(file)["results"]
         llvm_passes = "custom (build-kernel ones)" if run[RUN_USE_LLVM_OPT] \
             else "opt level ones"
         patterns = "all-disabled" if run[RUN_DISABLE_PATTERNS] else "default"
-
         # Changes in one function
         # Note: for CLEVER benchmark and for REVE/triangle is done
         #       program-level analysis (it was done for this purpose)
-        result = ["changes only in one function", run[RUN_OPTIMISATION],
-                  llvm_passes, patterns]
-        result.extend(function_program_total)
-        results.append(result)
-
-        # Changes in multiple functions
-        result = ["changes in all functions", run[RUN_OPTIMISATION],
-                  llvm_passes, patterns]
-        result.extend(aggregated)
-        results.append(result)
-    _print_total_results(head, results)
-    _github_print_results(head, results)
+        reports.append([
+            "changes only in one function",
+            run[RUN_OPTIMISATION],
+            llvm_passes,
+            patterns,
+            str(results["program-level"]["TN"]
+                + results["function-level"]["TN"]),
+            str(results["program-level"]["FP"]
+                + results["function-level"]["FP"]),
+            str(results["program-level"]["TP"]
+                + results["function-level"]["TP"]),
+            str(results["program-level"]["FN"]
+                + results["function-level"]["FN"]),
+        ])
+        reports.append([
+            "changes in all function",
+            run[RUN_OPTIMISATION],
+            llvm_passes,
+            patterns,
+            str(results["aggregated"]["TN"]),
+            str(results["aggregated"]["FP"]),
+            str(results["aggregated"]["TP"]),
+            str(results["aggregated"]["FN"]),
+        ])
+    _print_total_results(head, reports)
+    _github_print_results(head, reports)
 
 
 def _print_total_results(head, results):

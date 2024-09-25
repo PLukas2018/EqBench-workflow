@@ -2,8 +2,6 @@
 # Builds EqBench programs and compares them,
 # returns results how much successful was the comparison.
 #
-# Requirements: tabulate
-#
 # References:
 # - EqBench paper:
 #   https://people.ece.ubc.ca/mjulia/publications/EQBench_2021.pdf
@@ -41,9 +39,8 @@
 
 from argparse import ArgumentParser
 from collections import defaultdict
-import csv
+from enum import Enum
 import errno
-import tabulate
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 import json
@@ -117,6 +114,24 @@ class ProgramInfo:
         return Path(src_dir, DESCRIPTION_FILE_NAME).exists()
 
 
+class Evaluation(str, Enum):
+    """
+    Possible evaluation of result received by DiffKemp for certain EqBench
+    program.
+    """
+    # True positive: non-equal program evaluated by DiffKemp as non-equal.
+    TP = "TP"
+    # True negative: equal program evaluated by DiffKemp as equal.
+    TN = "TN"
+    # False positive: equal program evaluated by DiffKemp as non-equal.
+    FP = "FP"
+    # False negative: non-equal program evaluated by DiffKemp as equal.
+    FN = "FN"
+
+    def __str__(self):
+        return self.value
+
+
 class EqBenchRun:
     """
     Class for running analysis of DiffKemp equivalence checking
@@ -141,8 +156,16 @@ class EqBenchRun:
             self.check_cmp_opts()
         # Commands used for building and comparing of programs created based on
         # args provided by user
-        self.build_command = self.create_build_command()
-        self.compare_command = self.create_compare_command()
+        self.build_command = self._create_build_command()
+        self.compare_command = self._create_compare_command()
+        # Results for individual types (e.g. function-level, program-level,
+        # ...) of EqBench programs.
+        self.results = defaultdict(lambda: {
+            Evaluation.TP: 0,
+            Evaluation.TN: 0,
+            Evaluation.FP: 0,
+            Evaluation.FN: 0
+        })
         self._run()
         self.report()
 
@@ -309,6 +332,9 @@ class EqBenchRun:
                       f";{next(Path.glob(src_dir, 'old*.c'))}" + \
                       f";{next(Path.glob(src_dir, 'new*.c'))}"
         print(str(result), file=results_file)
+        # Updating results for individual types of programs based on result
+        # of current program.
+        self.results[benchmark_type][result.result] += 1
 
     def _compare(self, old_build_dir, new_build_dir, output_dir,
                  function=None):
@@ -339,49 +365,36 @@ class EqBenchRun:
 
     def report(self):
         """Prints results of evaluation."""
-        TYPE = 0
-        EXPECTED = 3  # Eq/Neq
-        CORRECT = 5  # True/False
-
-        header = ["Type",
-                  "Eq correct", "Eq not correct",
-                  "Neq correct", "Neq not correct"]
-        # dict benchmark_type: [eq correct, eq not correct, neq correct,
-        #                       neq not correct]
-        results = defaultdict(lambda: [0, 0, 0, 0])
-        # mapping result (csv fields `expected:correct`)` to index
-        # corresponding to header
-        mapping = {
-            "Eq:True": 0,
-            "Eq:False": 1,
-            "Neq:True": 2,
-            "Neq:False": 3,
+        total_results = {
+            Evaluation.TP: sum(
+                [result[Evaluation.TP] for result in self.results.values()]),
+            Evaluation.TN: sum(
+                [result[Evaluation.TN] for result in self.results.values()]),
+            Evaluation.FN: sum(
+                [result[Evaluation.FN] for result in self.results.values()]),
+            Evaluation.FP: sum(
+                [result[Evaluation.FP] for result in self.results.values()]),
         }
-        with open(self.results_file_path, "r") as file:
-            reader = csv.reader(file, delimiter=";")
-            # skipping header
-            next(reader)
-            for row in reader:
-                index = mapping[f"{row[EXPECTED]}:{row[CORRECT]}"]
-                benchmark_type = row[TYPE]
-                results[benchmark_type][index] += 1
-        report = f"""### Results
-
-- snapshots created using: `{" ".join(self.get_build_command())}`
-- snapshots compared using: `{" ".join(self.get_compare_command())}`
-"""
+        report = {
+            "results": {
+                "total": total_results,
+            },
+            "build-command": " ".join(self.build_command),
+            "compare-command": " ".join(self.compare_command),
+            "only-compare": self.only_compare,
+        }
+        # Adding results for individual benchmarks
+        report["results"].update(self.results)
         if self.add_custom_llvm_passes:
-            report += "- + custom passes were run"
-        report += tabulate.tabulate(
-            [[benchmark_type, *result]
-             for benchmark_type, result in results.items()],
-            headers=header, tablefmt="pipe")
-        print(report)
-
+            report["custom-llvm-passes"] = self.add_custom_llvm_passes
         # Saving summarisation of results to file
-        report += f"\n\n(only-compare: {self.only_compare})\n"
-        with open(Path(self.output_dir, "result.md"), "w") as file:
-            print(report, file=file)
+        with open(Path(self.output_dir, "result.json"), "w") as file:
+            print(json.dumps(report, indent=2), file=file)
+        # Print total results to stdout
+        print(f"true negatives: {total_results[Evaluation.TN]}")
+        print(f"false positives: {total_results[Evaluation.FP]}")
+        print(f"true positives: {total_results[Evaluation.TP]}")
+        print(f"false negatives: {total_results[Evaluation.FN]}")
 
 
 class AnalysisResult:
@@ -402,22 +415,31 @@ class AnalysisResult:
         self.benchmark_type = benchmark_type
         self.benchmark_name, self.program_name = \
             str(result_dir).split("/")[-3:-1]
+        # Evaluating result
+        if self.total_symbols == self.eq_symbols:
+            info = "Eq"
+        elif self.total_symbols == self.neq_symbols:
+            info = "Neq"
+        else:
+            info = f"{self.eq_symbols} Eq, {self.neq_symbols} Neq"
+        self.info = info
+        # Is the program correctly evaluated?
+        self.correct = True if info == self.expected_result else False
+        if self.correct:
+            self.result = Evaluation.TN if self.expected_result == "Eq" \
+                            else Evaluation.TP
+        else:
+            self.result = Evaluation.FP if self.expected_result == "Eq" \
+                            else Evaluation.FN
 
     def __str__(self):
         # `function-level` type has only one changed function in the file
         # `aggregated` contains multiple changed functions
-        if self.total_symbols == self.eq_symbols:
-            result = "Eq"
-        elif self.total_symbols == self.neq_symbols:
-            result = "Neq"
-        else:
-            result = f"{self.eq_symbols} Eq, {self.neq_symbols} Neq"
-        correct = str(True if result == self.expected_result else False)
         result_repre = [
             self.benchmark_type,
             self.benchmark_name, self.program_name,
             self.expected_result,
-            result, correct,
+            self.info, str(self.correct),
         ]
         return ";".join(result_repre)
 

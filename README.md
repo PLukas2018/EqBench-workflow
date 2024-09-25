@@ -80,7 +80,7 @@ provides more options.
 More detailed info about the results of the benchmark is located in
 `output_dir`:
 
-- `output_dir/run/result.md` contains the summary of the results,
+- `output_dir/run/result.json` contains the summary of the results,
 - `output_dir/run/eqbench-results.csv` contains info about the result of every
   program,
 
@@ -92,3 +92,60 @@ the `run` in the path is meant to be:
   default patterns.
 - `default-opt-O2-default-patterns` for O2 optimization with O2 passes and
   default patterns.
+
+## `result.json` format
+
+```json
+{
+  "results": {
+    "total": {
+      "TP": 125,
+      "TN": 56,
+      "FN": 0,
+      "FP": 91
+    },
+    "program-level": {
+      "TP": 22,
+      "TN": 4,
+      "FP": 27,
+      "FN": 0
+    },
+    "aggregated": {
+      "TP": 12,
+      "TN": 2,
+      "FP": 10,
+      "FN": 0
+    },
+    "function-level": {
+      "TP": 91,
+      "TN": 50,
+      "FP": 54,
+      "FN": 0
+    }
+  },
+  "build-command": "bin/diffkemp build",
+  "compare-command": "bin/diffkemp compare",
+  "only-compare": false
+}
+```
+
+- `results` contains results of evaluation:
+  - for all programs (`total`),
+  - for `program-level` programs: programs containing change in a single
+    function but the comparison have to be done from caller function,
+  - for `function-level` programs: programs containing change in a single
+    function from which is the comparison done,
+  - for `aggregated` programs: programs which aggregate changes from multiple
+    programs,
+
+  the results are described by numbers:
+  - true positives (`TP`): Neq programs evaluated as non-equal,
+  - true negatives (`TN`): Eq programs evaluated as equal,
+  - false positives (`FP`): Eq programs evaluated as non-equal,
+  - false negatives (`FN`): Neq programs evaluated as equal,
+- `build-command`: command which was used for building the programs,
+- `compare-command`: command which was used for comparing the programs,
+- `only-compare`: true if the programs were already built and right now were
+  only compared,
+- `custom-llvm-passes`: in case custom LLVM passes were used contains info
+  about them
