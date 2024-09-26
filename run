@@ -42,6 +42,7 @@
 from argparse import ArgumentParser
 from collections import defaultdict
 import csv
+import errno
 import tabulate
 from tempfile import NamedTemporaryFile
 from pathlib import Path
@@ -135,8 +136,22 @@ class EqBenchRun:
         self.output_src_file_paths = args.output_src_file_paths
         self.no_opt_override = args.no_opt_override
         self.add_custom_llvm_passes = args.add_custom_llvm_passes
+        self.add_cmp_opt = args.add_cmp_opt
+        if self.add_cmp_opt:
+            self.check_cmp_opts()
         self._run()
         self.report()
+
+    def check_cmp_opts(self):
+        """Checks if compare options specified by user exists."""
+        command = [self.diffkemp, "compare", "--help"]
+        output = subprocess.check_output(command, text=True)
+        # todo better options checking
+        for opt in self.add_cmp_opt:
+            opt = opt.split("=")[0]
+            if opt not in output:
+                print(f"Error: '{opt}' is not option of compare command")
+                sys.exit(errno.EINVAL)
 
     def _run(self):
         # todo parallel run to speed things up?
@@ -312,6 +327,8 @@ class EqBenchRun:
         compare_command = [
             self.diffkemp, "compare",
         ]
+        if self.add_cmp_opt:
+            compare_command.extend(self.add_cmp_opt)
         if self.disable_patterns:
             compare_command.extend(["--disable-all-patterns"])
         return compare_command
@@ -430,5 +447,7 @@ if __name__ == "__main__":
                         help="specify llvm passes to be added")
     parser.add_argument("--diffkemp", default="bin/diffkemp",
                         help="path to diffkemp executable")
+    parser.add_argument("--add-cmp-opt", help="adds option to compare command",
+                        action="append")
     args = parser.parse_args()
     EqBenchRun(args)
