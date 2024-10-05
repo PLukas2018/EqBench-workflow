@@ -139,6 +139,10 @@ class EqBenchRun:
         self.add_cmp_opt = args.add_cmp_opt
         if self.add_cmp_opt:
             self.check_cmp_opts()
+        # Commands used for building and comparing of programs created based on
+        # args provided by user
+        self.build_command = self.create_build_command()
+        self.compare_command = self.create_compare_command()
         self._run()
         self.report()
 
@@ -213,7 +217,7 @@ class EqBenchRun:
         """Creates snapshot of C `file` and saves it to `output_dir`.
         :param functions: List of functions to build the snapshot for or None.
         """
-        build_command = self.get_build_command()
+        build_command = self.build_command.copy()
         build_command.extend([file, output_dir])
         # If functions are specified add them as function_list
         if functions:
@@ -230,7 +234,7 @@ class EqBenchRun:
                                    f"-passes={self.add_custom_llvm_passes}",
                                    "-S", "-o", llvm_file_path])
 
-    def get_build_command(self):
+    def _create_build_command(self):
         """Creates build command, does not include src file and output dir."""
         build_command = [
             self.diffkemp,
@@ -312,7 +316,7 @@ class EqBenchRun:
         :param function: Name of function to compare,
                          if it is None than it compares all functions.
         """
-        compare_command = self.get_compare_command()
+        compare_command = self.compare_command.copy()
         compare_command.extend([
             old_build_dir, new_build_dir,
             "-o", output_dir,
@@ -322,7 +326,7 @@ class EqBenchRun:
             compare_command.extend(["--function", function])
         return subprocess.check_output(compare_command).decode("utf-8")
 
-    def get_compare_command(self):
+    def _create_compare_command(self):
         """Based on program arguments creates compare command."""
         compare_command = [
             self.diffkemp, "compare",
