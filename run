@@ -32,10 +32,7 @@
 #       (compared function doesn't have changes but calls function which does),
 #   - `benchmark`, `program`: represents name of benchmark and program,
 #   - `expected`: represents expected result of comparison (Eq/Neq)
-#   - `result`: represents result of DiffKemp comparison (Eq/Neq),
-#     for aggregated type if comparison was incorrect contains info
-#     about how many functions were evaluated as Eq and Neq,
-#   - `correct`: True if evaluation was correct, else False,
+#   - `result`: represents result of evaluation (TP/TN/FN/FP)
 
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -204,7 +201,7 @@ class EqBenchRun:
                       "correct;changes;old_src;new_src",
                       file=results_file)
             else:
-                print("type;benchmark;program;expected;result;correct",
+                print("type;benchmark;program;expected;result",
                       file=results_file)
             print("\ta) Comparing Eq snapshots", file=sys.stderr)
             self._compare_snapshots(neq=False, results_file=results_file)
@@ -443,7 +440,7 @@ class AnalysisResult:
             self.benchmark_type,
             self.benchmark_name, self.program_name,
             self.expected_result,
-            self.info, str(self.correct),
+            str(self.result),
         ]
         return ";".join(result_repre)
 

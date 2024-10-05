@@ -37,7 +37,7 @@ where
 Results are saved to `results.csv`, the file can look something like this:
 
 ```csv
-Type;opt level;using custom llvm passes;patterns;eq/eq;eq/neq;neq/neq;neq/eq
+Type;opt level;using custom llvm passes;patterns;TN;FP;TP;FN
 changes only in one function;-O2;opt level ones;default;91;41;111;0
 changes in all functions;-O2;opt level ones;default;7;5;12;0
 changes only in one function;-O1;custom (build-kernel ones);default;54;78;111;0
@@ -65,7 +65,11 @@ Meaning of fields:
 - `patterns`:
   - `default`: DiffKemp default built-in patterns were used,
   - `all-disabled`: all DiffKemp built-in patterns were disabled,
-- meaning of `eq/eq,...` is `expected result/result of diffkemp compare`.
+- meaning of results:
+  - `TN` (true negatives): number of Eq programs evaluated correctly
+  - `FP` (false positives): number of Eq programs evaluated incorrectly
+  - `TP` (true positives): number of Neq programs evaluated correctly
+  - `FN` (false negatives): number of Neq programs evaluated incorrectly
 
 By default, the analysis is run for:
 

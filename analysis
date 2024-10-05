@@ -56,7 +56,7 @@ def compare_multiple(args):
 def get_total(output_dir):
     """Prints summary of evaluation for RUNS saved in output_dir."""
     head = ["Type", "opt level", "using custom llvm passes",
-            "patterns", "eq/eq", "eq/neq", "neq/neq", "neq/eq"]
+            "patterns", "TN", "FP", "TP", "FN"]
     reports = []
     for run in RUNS:
         result_file = os.path.join(output_dir, run[RUN_FILE], "result.json")
@@ -142,7 +142,7 @@ def get_incorect(output_dir):
     """Returns csv optput with all incorectly evaluated programs
     from all runs saved in output_dir"""
     TYPE = 0
-    CORRECT = 5
+    RESULT = 4
     incorrect = set()
     for run in RUNS:
         results_path = \
@@ -152,7 +152,7 @@ def get_incorect(output_dir):
             head = next(reader)
             for line in reader:
                 if line[TYPE] in ["function-level", "program-level"] \
-                   and line[CORRECT] == "False":
+                   and line[RESULT] in ["FP", "FN"]:
                     incorrect.add(";".join(line))
     print(";".join(head))
     for line in incorrect:
@@ -209,16 +209,6 @@ def diff_2_runs(args):
 
 def get_results_by_benchmarks(dir):
     """Returns table containing results for individual benchmarks."""
-    def create_header(row):
-        if row["expected"] == "Eq" and row["correct"] is True:
-            return "Eq/Eq"
-        if row["expected"] == "Eq" and row["correct"] is False:
-            return "Eq/Neq"
-        elif row["expected"] == "Neq" and row["correct"] is True:
-            return "Neq/Neq"
-        else:
-            return "Neq/Eq"
-
     CHANGES_IN_ONE_FUN = "changes in one function"
     CHANGES_IN_ALL_FUNS = "changes in all functions"
 
@@ -233,16 +223,12 @@ def get_results_by_benchmarks(dir):
         "aggregated": CHANGES_IN_ALL_FUNS
     })
 
-    # Grouping results by type, benchmark and expected result,
+    # Grouping results by type, benchmark and result of evaluation,
     # counting number of in/correct
-    df = df.groupby(["type", "benchmark", "expected"])["correct"]\
-        .value_counts().reset_index()
+    df = df.groupby(["type", "benchmark"])["result"].value_counts()\
+        .reset_index()
     # Sorting by benchmark
     df.sort_values(by=["benchmark"])
-    # Creating header for results
-    df['header'] = df.apply(create_header, axis=1)
-    # Now the expected and correct column can be removed
-    df.drop(columns=["expected", "correct"], inplace=True)
 
     # Results based on types
     one_results = df[df["type"] == CHANGES_IN_ONE_FUN]
@@ -253,9 +239,9 @@ def get_results_by_benchmarks(dir):
 
     # Rotating table for better visualisation
     one_results = pd.pivot_table(one_results, index=["benchmark"],
-                                 columns=["header"], fill_value=0)
+                                 columns=["result"], fill_value=0)
     all_results = pd.pivot_table(all_results, index=["benchmark"],
-                                 columns=["header"], fill_value=0)
+                                 columns=["result"], fill_value=0)
 
     # Dropping count column
     one_results = one_results.droplevel(0, axis=1)
