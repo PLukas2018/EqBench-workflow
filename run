@@ -48,6 +48,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 # regex for getting info from diffkemp report stat
 REGEX_TOTAL = re.compile("^Total symbols: *(\\d+)", flags=re.MULTILINE)
@@ -194,6 +195,7 @@ class EqBenchRun:
 
         # Comparing snapshots and writing results to file
         print("2) Comparing snapshots", file=sys.stderr)
+        cmp_start_time = time.time()
         if self.cmp_dir.exists():
             shutil.rmtree(self.cmp_dir)
         with open(self.results_file_path, "w") as results_file:
@@ -208,6 +210,7 @@ class EqBenchRun:
             self._compare_snapshots(neq=False, results_file=results_file)
             print("\tb) Comparing Neq snapshots", file=sys.stderr)
             self._compare_snapshots(neq=True, results_file=results_file)
+        self.cmp_runtime = time.time() - cmp_start_time
         print(f"\n\nResults are written to {str(self.results_file_path)}\n\n")
 
     def _create_snapshots(self, new):
@@ -382,6 +385,7 @@ class EqBenchRun:
             "build-command": " ".join(self.build_command),
             "compare-command": " ".join(self.compare_command),
             "only-compare": self.only_compare,
+            "compare-runtime": self.cmp_runtime,
         }
         # Adding results for individual benchmarks
         report["results"].update(self.results)

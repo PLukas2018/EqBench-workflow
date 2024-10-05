@@ -148,4 +148,5 @@ the `run` in the path is meant to be:
 - `only-compare`: true if the programs were already built and right now were
   only compared,
 - `custom-llvm-passes`: in case custom LLVM passes were used contains info
-  about them
+  about them,
+- `compare-runtime`: runtime of programs comparison in seconds
