@@ -53,8 +53,8 @@ REGEX_EQUAL = re.compile("^Equal: *(\\d+)", flags=re.MULTILINE)
 REGEX_NEQUAL = re.compile("^Not equal: *(\\d+)", flags=re.MULTILINE)
 
 BENCHMARK_DIR = "benchmarks"
-BUILD_DIR = "benchmarks-build"
-COMPARE_DIR = "benchmarks-compare"
+BUILD_DIR = "snapshots"
+COMPARE_DIR = "results"
 
 # Name of file which describes EqBench programs.
 DESCRIPTION_FILE_NAME = "C-Desc.json"
@@ -138,7 +138,8 @@ class EqBenchRun:
     def __init__(self, args):
         self.src_dir = Path(args.source_dir, BENCHMARK_DIR)
         self.output_dir = Path(args.output_dir)
-        self.build_dir = Path(args.output_dir, BUILD_DIR)
+        self.build_dir = (Path(args.snap_dir) if args.snap_dir
+                          else Path(args.output_dir, BUILD_DIR))
         self.cmp_dir = Path(args.output_dir, COMPARE_DIR)
         self.only_compare = args.only_compare
         # Path to diffkemp executable
@@ -180,9 +181,11 @@ class EqBenchRun:
 
     def _run(self):
         # todo parallel run to speed things up?
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(exist_ok=True)
         if not self.only_compare:
-            if self.output_dir.exists():
-                shutil.rmtree(self.output_dir)
+            if self.build_dir.exists():
+                shutil.rmtree(self.build_dir)
             # Creating snapshots
             print("1) Creating snapshots:", file=sys.stderr)
             print("\ta) Creating old snapshots:", file=sys.stderr)
@@ -456,7 +459,8 @@ if __name__ == "__main__":
     parser.add_argument("--only-compare", action="store_true",
                         help="only runs comparison, expects that " +
                         "the programs are already build " +
-                        "and located in `output_dir`")
+                        "and located in `output_dir` or directory " +
+                        "specified by `--snap-dir` option")
     parser.add_argument("--disable-patterns", action="store_true",
                         help="disable all built-in patterns in comparison, " +
                         "default patterns are used by default")
@@ -476,5 +480,7 @@ if __name__ == "__main__":
                         help="path to diffkemp executable")
     parser.add_argument("--add-cmp-opt", help="adds option to compare command",
                         action="append")
+    parser.add_argument("--snap-dir", help="sets directory for saving " +
+                        "snapshots")
     args = parser.parse_args()
     EqBenchRun(args)
