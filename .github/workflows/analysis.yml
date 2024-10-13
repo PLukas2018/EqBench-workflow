@@ -19,7 +19,7 @@ jobs:
   EqBench:
     runs-on: ubuntu-latest
     env:
-      llvm: 16
+      llvm: 17
 
     steps:
       - if: ${{ github.event_name == 'push'}}
