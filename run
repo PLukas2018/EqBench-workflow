@@ -151,6 +151,8 @@ class EqBenchRun:
         self.no_opt_override = args.no_opt_override
         self.add_custom_llvm_passes = args.add_custom_llvm_passes
         self.add_cmp_opt = args.add_cmp_opt
+        # Program to be compared, if not specified all programs are compared
+        self.program = args.program
         if self.add_cmp_opt:
             self.check_cmp_opts()
         # Commands used for building and comparing of programs created based on
@@ -222,7 +224,11 @@ class EqBenchRun:
         # TODO count of programs specified in paper and located in dir
         # does not match
         name = "old" if not new else "new"
-        files = list(Path(self.src_dir).glob(f"**/{name}*.c"))
+        if self.program:
+            files = list(Path(self.src_dir)
+                         .glob(f"**/{self.program}/{name}*.c"))
+        else:
+            files = list(Path(self.src_dir).glob(f"**/{name}*.c"))
         for file in files:
             # getting relative path to program folder
             # (benchmark/program/eq_or_neq)
@@ -482,5 +488,7 @@ if __name__ == "__main__":
                         action="append")
     parser.add_argument("--snap-dir", help="sets directory for saving " +
                         "snapshots")
+    parser.add_argument("--program", help="compares only one program " +
+                        "specified in form <benchmark/program/variant>")
     args = parser.parse_args()
     EqBenchRun(args)
